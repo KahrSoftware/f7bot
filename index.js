@@ -1,17 +1,25 @@
 /*
- * Kahr f7bot version2
+ * f7bot version3 
  */
 
+const { Client, Intents, MessageEmbed } = require('discord.js');
 const Discord = require('discord.js');
-const client = new Discord.Client();
+
+const myIntents = new Intents();
+myIntents.add(Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS);
+
+const client = new Client({ intents: myIntents });
+
+const QuickChart = require('quickchart-js');
 
 // regular experession for a command
 const cmdRe = /\/|##|#/;
 const rollRe = /\d*d\d+([\+-]\d+)?$/;
 const newRollRe = /(?<dice>\d+)?d(?<sides>\d+)?((?<positive>[\+-])(?<modifier>\d+))?$/;
-const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?$/;
+//const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?$/;
+const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?((\>)(?<floor>\d+))?$/;
 
-/*
+/* 
  * Roll a die and return a random int between 1 and sides
  */
 function rollDie(sides) {
@@ -28,6 +36,7 @@ function parseCommand(command) {
  	let sides = 20;
 	let modifier = 0;
 	let positive = true;
+	let floor = Number.MAX_SAFE_INTEGER;
 
 	if(command === "" | command[0] == '+' || command[0] == '-') {
 		command = '1d20'+command;
@@ -36,6 +45,8 @@ function parseCommand(command) {
 	
 	
 	let match = newRollRe2.exec(command);
+
+	//console.log(parseInt(match.groups.floor,10));
 	
 	if(!!match.groups.dice) {
 		dice = parseInt(match.groups.dice,10);
@@ -49,20 +60,30 @@ function parseCommand(command) {
 	if(!!match.groups.modifier) {
 		modifier = parseInt(match.groups.modifier,10);
 	}
+	if(!!match.groups.floor) {
+		floor = parseInt(match.groups.floor,10);
+	}
 
-	return {'dice':dice, 'sides':sides, 'modifier':modifier, 'positive':positive, 'command':commandCopy};
+	return {'dice':dice, 'sides':sides, 'modifier':modifier, 'positive':positive, 'floor':floor, 'command':commandCopy};
 
  }
 
+ /*
+  *
+  */
  function doRolls(rollObj) {
 
 	let total = 0;
 	let thisRoll = 0;
 	let results = [];
+	let isFloor = rollObj.floor !== Number.MAX_SAFE_INTEGER;
 
 	for(let i = 0; i < rollObj.dice; i++) {
 
 		thisRoll = rollDie(rollObj.sides);
+		if(isFloor) {
+			thisRoll = Math.max(thisRoll, rollObj.floor);
+		}
 		total += thisRoll;
 		results.push(thisRoll);
 	}
@@ -73,20 +94,64 @@ function parseCommand(command) {
 
  }
 
-client.on('message', message => {
+client.on('messageCreate', message => {
 
 	//console.log(message.content);
 	if(message.content === '#ping') {
-	let author = message.author.username;
-	const pongEmbed = new Discord.MessageEmbed()
-		.setColor('#0099ff')
-		.setTitle('Pong!')
-		.addField('Try 🅰️ when you have advantage! \nTry 🇩 when you have disdvantage! \nTry ☄️ when you have guidance!', 'Now with less bugs! 🪲')
+		let author = message.author.username;
+		const pongEmbed = new MessageEmbed()
+			.setColor('#0099ff')
+			.setTitle('Pong!')
+			//.addField('Try 🅰️ when you have advantage! \nTry 🇩 when you have disdvantage! \nTry ☄️ when you have guidance!', 'Now with less bugs! 🪲')
+			.addField('Unhappy with your dice result?', 'Try the command "#bullshit"!')
+			.setTimestamp()
+			.setFooter({ text: 'ping pong @'+author });
 
-		.setTimestamp()
-		.setFooter('ping pong @'+author);
+		message.channel.send({ embeds: [pongEmbed] });
+	}
+	else if(message.content === '#bullshit') {
 
-	message.channel.send(pongEmbed);
+		let data = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+
+		let output;
+
+		for(let i = 0; i < 100000; i++) {
+			output = rollDie(20);
+			data[output-1] += 1;
+		}
+
+		console.log(data);
+
+		let chart = new QuickChart();
+		chart.setConfig({
+				type: 'bar',
+				data: { labels: [...Array(20).keys()].map(function(val){return ++val;}), datasets: [{ label: 'Roll Results', data: data }] },
+				options: {
+	        		plugins: {
+	            		colorschemes: {
+	                		//scheme: 'office.Angles6'
+	                		scheme: 'office.BlueII6'
+	            		}
+	        		}
+    			}
+		  })
+			.setWidth(1200)
+			.setHeight(600)
+			.setBackgroundColor('black');
+
+		//console.log(chart.getShortUrl());
+		const chartEmbed = {
+  			title: 'I rolled 100,000d20 for you. Here are the results.',
+  			description: 'Statistics predict 5000 occurences of each value.',
+  			image: {
+    			url: chart.getUrl()//,
+  			},
+  			color: '#0099ff'
+		};
+		console.log(chartEmbed);
+		//message.channel.send('Here\'s the chart you requested:'+chart.getUrl());
+		message.channel.send({ embeds: [chartEmbed] });
+
 	}
 	else if(!message.author.bot && message.channel.name == 'dice-rolls' && cmdRe.test(message.content)) {
 
@@ -94,19 +159,19 @@ client.on('message', message => {
 		let rollObj = parseCommand(command);
 		let resultsObj = doRolls(rollObj);
 
-		const basicEmbed = new Discord.MessageEmbed()
+		const basicEmbed = new MessageEmbed()
 				.setColor('#0099ff')
 				.setTitle('Result: '+resultsObj.total)
 				//.addField(results.toString(),'\u200b')
 				.addField(name='['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), value=rollObj.command, inline=true)
 				.setTimestamp()
-				.setFooter('Rolled by @'+message.author.username);
+				.setFooter({ text: 'Rolled by @'+message.author.username });
 
-		message.channel.send(basicEmbed);
+		message.channel.send({ embeds: [basicEmbed] });
 
 	}
 
-	if(message.author.username == 'f7bot' && message.embeds[0].title != 'Pong!') {
+	if(message.author.username == 'f7bot' && message.embeds[0].title != 'Pong!' && message.embeds[0].title != 'I rolled 100,000d20 for you. Here are the results.') {
 		message.react('🅰️');
 		message.react('🇩');
 		message.react('☄️');
@@ -161,7 +226,7 @@ client.on('messageReactionAdd', (reaction, user) => {
 					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
 				}
 
-				reaction.message.edit([theEmbed])
+				reaction.message.edit({embeds : [theEmbed]});
 			}
 		}
 
@@ -204,7 +269,7 @@ client.on('messageReactionAdd', (reaction, user) => {
 					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
 				}
 
-				reaction.message.edit([theEmbed])
+				reaction.message.edit({embeds : [theEmbed]});
 			}
 		}
 
@@ -222,7 +287,7 @@ client.on('messageReactionAdd', (reaction, user) => {
 
 				theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
 
-				reaction.message.edit([theEmbed]);
+				reaction.message.edit({embeds : [theEmbed]});
 			}
 		}
 		if(reaction._emoji.name==='🍆') {
