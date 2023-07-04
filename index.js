@@ -1,226 +1,242 @@
 /*
- * f7bot index.js
+ * Kahr f7bot version2
  */
 
 const Discord = require('discord.js');
 const client = new Discord.Client();
 
-const basicRollRe = /\d+d\d+$/;
-const failRollRe = /\d+d\d+f\d+$/;
+// regular experession for a command
+const cmdRe = /\/|##|#/;
+const rollRe = /\d*d\d+([\+-]\d+)?$/;
+const newRollRe = /(?<dice>\d+)?d(?<sides>\d+)?((?<positive>[\+-])(?<modifier>\d+))?$/;
+const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?$/;
 
-const addModifierRe = /.*\+\d+$/;
-
+/*
+ * Roll a die and return a random int between 1 and sides
+ */
 function rollDie(sides) {
 	return Math.ceil(Math.random() * sides);
 }
 
+/*
+ * Take in a command and return a dice roll objec
+ * the dice roll object has the number of dice, the number sides on those dice,
+ */
+function parseCommand(command) {
+ 	
+ 	let dice = 1;
+ 	let sides = 20;
+	let modifier = 0;
+	let positive = true;
+
+	if(command === "" | command[0] == '+' || command[0] == '-') {
+		command = '1d20'+command;
+	}
+	let commandCopy = command;
+	
+	
+	let match = newRollRe2.exec(command);
+	
+	if(!!match.groups.dice) {
+		dice = parseInt(match.groups.dice,10);
+	}
+	if(!!match.groups.sides) {
+		sides = parseInt(match.groups.sides,10);
+	}
+	if(!!match.groups.positive) {
+		positive = match.groups.positive=='+'?true:false;
+	}
+	if(!!match.groups.modifier) {
+		modifier = parseInt(match.groups.modifier,10);
+	}
+
+	return {'dice':dice, 'sides':sides, 'modifier':modifier, 'positive':positive, 'command':commandCopy};
+
+ }
+
+ function doRolls(rollObj) {
+
+	let total = 0;
+	let thisRoll = 0;
+	let results = [];
+
+	for(let i = 0; i < rollObj.dice; i++) {
+
+		thisRoll = rollDie(rollObj.sides);
+		total += thisRoll;
+		results.push(thisRoll);
+	}
+
+	total += rollObj.positive?rollObj.modifier:-1*rollObj.modifier;
+
+	return {'total':total, 'results':results};
+
+ }
 
 client.on('message', message => {
-	
-	// don't look at the bot's messages, only look at commands with #
-	if(message.author.bot == false && message.content.slice(0,1) == '#') {
-		
-		let author = message.author.username;
 
-		let command = message.content.slice(1);
-
-		// search for an addition modifier at the end of the command
-		let lastPlus = command.lastIndexOf('+');
-		let addModifier = 0;
-		// if there is such modifier
-		if(lastPlus != -1) {
-			//save the number for later
-			addModifier = parseInt(command.slice(lastPlus),10);
-			command = command.slice(0, lastPlus);
-			// error check
-			if(isNaN(addModifier)) {
-				addModifier = 0;
-			}
-
-		}
-
-		// search for a subtraction modifier
-		let lastMinus = command.lastIndexOf('-');
-		let minusModifier = 0;
-		// if there is such modifier
-		if(lastMinus != -1) {
-			//save the number for later
-			minusModifier = parseInt(command.slice(lastMinus),10);
-			command = command.slice(0, lastMinus);
-			// error check
-			if(isNaN(minusModifier)) {
-				minusModifier = 0;
-			}
-
-		}
-
-		// apply the d20 shortcut
-		if(command == '#' || command == '') {
-
-			let total = 0;
-
-			let thisRoll = 0;
-			let results = [];
-
-			thisRoll = rollDie(20);
-			total += thisRoll;
-			results.push(thisRoll);
-
-
-			total += addModifier;
-			total += minusModifier;
-
-			const basicEmbed = new Discord.MessageEmbed()
-				.setColor('#0099ff')
-				.setTitle('Result: '+total)
-				.addField(results.toString(),'\u200b')
-				.setTimestamp()
-				.setFooter('Rolled by @'+author);
-
-			message.channel.send(basicEmbed);
-		}
-
-		// apply the regex
-		else if(failRollRe.test(command) == true) {
-
-			command = command.split(/d|f/);
-			
-			let numRolls = parseInt(command[0], 10);
-			let sides = parseInt(command[1], 10);
-			let passNum = parseInt(command[2], 10);
-			
-			let total = 0;
-			let unmodified = 0;
-			let numMin = 0;
-			let numMax = 0;
-			let advantage = 0;
-			let disadvantage = 0;
-
-			let thisRoll = 0;
-			let results = [];
-			for(let i = 0; i < numRolls; i++) {
-				
-				thisRoll = rollDie(sides);
-
-				if(thisRoll >= passNum) {
-					total += 1;
-					unmodified += 1;
-					if(thisRoll == passNum) {
-						disadvantage += 1;
-					}
-				}
-				if(thisRoll == sides) {
-					total += 1;
-					numMax += 1;
-				}
-				if(thisRoll == 1) {
-					total -= 1;
-					numMin += 1;
-				}
-
-				results.push(thisRoll);
-			}
-
-			total += addModifier;
-			total -= minusModifier;
-
-			advantage = total + numMin;
-			disadvantage = (-1 * disadvantage) + total;
-
-			//console.log(total);
-			//console.log(numMax);
-			//console.log(numMin);
-
-			//message.channel.send('```'+'Result: '+total+'\n'+sides+'\'s: ' + numMax+'\t1\'s: ' + numMin +'\tUnmodified Total: ' + unmodified+'\t'+'\n'+results.toString()+'```');
-			//message.channel.send('**Result: '+total+'**\n'+sides+'\'s: ' + numMax+'\t1\'s: ' + numMin +'\tUnmodified Total: ' + unmodified+'\t'+'\n'+results.toString());
-
-			const failEmbed = new Discord.MessageEmbed()
-				.setColor('#0099ff')
-				.setTitle('Result: '+total)
-				.addFields(
-					{name: sides+'\'s', value: numMax, inline: true},
-					{name: '1\'s', value: numMin, inline: true},
-					{name: 'Unmodified', value: unmodified, inline: true}
-				)
-				.addFields(
-					{name: 'Advantage', value: advantage, inline: true},
-					{name: 'Disadvantage', value: disadvantage, inline: true}
-				)
-				.addField(results.toString(),'\u200b')
-				.setTimestamp()
-				.setFooter('Rolled by @'+author);
-
-			message.channel.send(failEmbed);
-		}
-
-		else if(basicRollRe.test(command)) {
-
-			command = command.split(/d/);
-
-			let numRolls = parseInt(command[0], 10);
-			let sides = parseInt(command[1], 10);
-
-			let total = 0;
-
-			let thisRoll = 0;
-			let results = [];
-			for(let i = 0; i < numRolls; i++) {
-
-				thisRoll = rollDie(sides);
-				total += thisRoll;
-				results.push(thisRoll);
-			}
-
-			total += addModifier;
-			total += minusModifier;
-
-			//message.channel.send('```'+'Result: '+total+'\n'+results.toString()+'```');
-
-			const basicEmbed = new Discord.MessageEmbed()
-				.setColor('#0099ff')
-				.setTitle('Result: '+total)
-				.addField(results.toString(),'\u200b')
-				.setTimestamp()
-				.setFooter('Rolled by @'+author);
-
-			message.channel.send(basicEmbed);
-
-		}
-
-	}
-
-	// add adv and disadv
-	//if(message.author.username == 'f7bot') {
-	//	message.react('🅰️');
-		//message.react('🇩');
-	//}
-
+	//console.log(message.content);
 	if(message.content === '#ping') {
-		// send back "Pong." to the channel the message was sent in
-		//message.channel.send('Pong.');
-		let author = message.author.username;
-		const pongEmbed = new Discord.MessageEmbed()
-			.setColor('#0099ff')
-			.setTitle('Pong!')
-			.addField('Try \"##\" to roll 1d20.\nTry \"#+5\" to roll 1d20+5.', '\u200b')
-			.setTimestamp()
-			.setFooter('ping pong @'+author);
+	let author = message.author.username;
+	const pongEmbed = new Discord.MessageEmbed()
+		.setColor('#0099ff')
+		.setTitle('Pong!')
+		.addField('Try 🅰️ when you have advantage! \nTry 🇩 when you have disdvantage! \nTry ☄️ when you have guidance!', 'Now with less bugs! 🪲')
 
-		message.channel.send(pongEmbed);
+		.setTimestamp()
+		.setFooter('ping pong @'+author);
+
+	message.channel.send(pongEmbed);
 	}
+	else if(!message.author.bot && message.channel.name == 'dice-rolls' && cmdRe.test(message.content)) {
+
+		let command = message.content.split(cmdRe)[1];
+		let rollObj = parseCommand(command);
+		let resultsObj = doRolls(rollObj);
+
+		const basicEmbed = new Discord.MessageEmbed()
+				.setColor('#0099ff')
+				.setTitle('Result: '+resultsObj.total)
+				//.addField(results.toString(),'\u200b')
+				.addField(name='['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), value=rollObj.command, inline=true)
+				.setTimestamp()
+				.setFooter('Rolled by @'+message.author.username);
+
+		message.channel.send(basicEmbed);
+
+	}
+
+	if(message.author.username == 'f7bot' && message.embeds[0].title != 'Pong!') {
+		message.react('🅰️');
+		message.react('🇩');
+		message.react('☄️');
+	}
+
 });
 
-/*
-client.on('messageReactionAdd', reactObj => {
+client.on('messageReactionAdd', (reaction, user) => {
+	//console.log(user);
 
-	console.log(reactObj.message.embeds);
-	console.log(reactObj.message.embeds[0].fields);
+	if(!user.bot && reaction.message.author.bot) {
+		// figure out which emoji
+
+		//console.log(reaction);
+
+		if(reaction._emoji.name==='🅰️'&&reaction.count===2) {
+
+			let theEmbed = reaction.message.embeds[0];
+
+			if(theEmbed.fields.length==1 || (theEmbed.fields.length==2 && theEmbed.fields[1].value=='Guidance!')) {
+				let guidance = 0;
+
+				let command = theEmbed.fields[0].value;
+				let rollObj = parseCommand(command);
+				
+				// grab the original results
+				let firstTotal = theEmbed.title;
+				firstTotal = parseInt(firstTotal.split("Result: ")[1],10);
+
+				// do another roll
+				let resultsObj = doRolls(rollObj);
+
+				// place the new result up top
+				if(theEmbed.fields.length==2) {
+					guidance = parseInt(theEmbed.fields[1].name.slice(1,-1),10);
+					firstTotal-=guidance;
+					theEmbed.setTitle('Result: '+(Math.max(resultsObj.total,firstTotal)+guidance));
+					theEmbed.fields.pop();
+
+				}
+				else {
+					theEmbed.setTitle('Result: '+Math.max(resultsObj.total,firstTotal));
+				}
+
+				//theEmbed.fields[0].inline=true;
+				theEmbed.addField(name='['+resultsObj.results.toString()+'] '+
+					(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
+					value='Advantage!',
+					inline=true);
+
+				if(guidance>0) {
+					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+				}
+
+				reaction.message.edit([theEmbed])
+			}
+		}
+
+		if(reaction._emoji.name==='🇩'&&reaction.count===2) {
+
+			let theEmbed = reaction.message.embeds[0];
+
+			if(theEmbed.fields.length==1 || (theEmbed.fields.length==2 && theEmbed.fields[1].value=='Guidance!')) {
+				let guidance = 0;
+
+				let command = theEmbed.fields[0].value;
+				let rollObj = parseCommand(command);
+				
+				// grab the original results
+				let firstTotal = theEmbed.title;
+				firstTotal = parseInt(firstTotal.split("Result: ")[1],10);
+
+				// do another roll
+				let resultsObj = doRolls(rollObj);
+
+				// place the new result up top
+				if(theEmbed.fields.length==2) {
+					guidance = parseInt(theEmbed.fields[1].name.slice(1,-1),10);
+					firstTotal-=guidance;
+					theEmbed.setTitle('Result: '+(Math.min(resultsObj.total,firstTotal)+guidance));
+					theEmbed.fields.pop();
+
+				}
+				else {
+					theEmbed.setTitle('Result: '+Math.min(resultsObj.total,firstTotal));
+				}
+
+				//theEmbed.fields[0].inline=true;
+				theEmbed.addField(name='['+resultsObj.results.toString()+'] '+
+					(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
+					value='Disadvantage!',
+					inline=true);
+
+				if(guidance>0) {
+					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+				}
+
+				reaction.message.edit([theEmbed])
+			}
+		}
+
+		if(reaction._emoji.name==='☄️'&&reaction.count===2) {
+			let theEmbed = reaction.message.embeds[0];
+
+			if(theEmbed.fields.length==1 || (theEmbed.fields.length==2 && theEmbed.fields[1].value!='Guidance!')) {
+
+				let guidance = rollDie(4);
+
+				let firstTotal = theEmbed.title;
+				firstTotal = parseInt(firstTotal.split('Result: ')[1],10);
+
+				theEmbed.setTitle('Result: '+(firstTotal+guidance));
+
+				theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+
+				reaction.message.edit([theEmbed]);
+			}
+		}
+		if(reaction._emoji.name==='🍆') {
+
+			reaction.message.channel.send('Eggplant');
+		}
+
+	}
+
 });
-*/
 
 
 client.once('ready', () => {
-	console.log('Ready!');
+	console.log('f7bot running');
 });
 
 // token removed
