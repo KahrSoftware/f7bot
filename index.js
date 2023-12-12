@@ -1,6 +1,8 @@
 /*
- * f7bot version3 
+ * f7bot
  */
+
+require('dotenv').config();
 
 const { Client, Intents, MessageEmbed } = require('discord.js');
 const Discord = require('discord.js');
@@ -304,5 +306,4 @@ client.once('ready', () => {
 	console.log('f7bot running');
 });
 
-// token removed
-client.login('');
+client.login(process.env.TOKEN);
