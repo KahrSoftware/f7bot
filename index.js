@@ -2,24 +2,18 @@
  * f7bot
  */
 
-require('dotenv').config();
-
 const { Client, Intents, MessageEmbed } = require('discord.js');
-const Discord = require('discord.js');
-
 const myIntents = new Intents();
 myIntents.add(Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS);
-
 const client = new Client({ intents: myIntents });
+
+const Environment = require('dotenv').config();
 
 const QuickChart = require('quickchart-js');
 
 // regular experession for a command
-const cmdRe = /\/|##|#/;
-const rollRe = /\d*d\d+([\+-]\d+)?$/;
-const newRollRe = /(?<dice>\d+)?d(?<sides>\d+)?((?<positive>[\+-])(?<modifier>\d+))?$/;
-//const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?$/;
-const newRollRe2 = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?((\>)(?<floor>\d+))?$/;
+const cmdRegEx = /\/|##|#/;
+const rollRegEx = /((?<dice>\d+)d(?<sides>\d+))?((?<positive>[\+-])(?<modifier>\d+))?((\>)(?<floor>\d+))?$/;
 
 /* 
  * Roll a die and return a random int between 1 and sides
@@ -45,11 +39,8 @@ function parseCommand(command) {
 	}
 	let commandCopy = command;
 	
-	
-	let match = newRollRe2.exec(command);
-
+	let match = rollRegEx.exec(command);
 	//console.log(parseInt(match.groups.floor,10));
-	
 	if(!!match.groups.dice) {
 		dice = parseInt(match.groups.dice,10);
 	}
@@ -71,7 +62,14 @@ function parseCommand(command) {
  }
 
  /*
-  *
+  * Simulate Rolls
+  * rollObj parameter:
+  * 	.dice - # of dice
+  *		.sides - # of sides on each die
+  *		.modifier - # to add to result
+  *		.positive - if modifier is positive or not
+  *		.floor - minimum roll on a die
+  *		.command - copy of user command for display
   */
  function doRolls(rollObj) {
 
@@ -90,7 +88,7 @@ function parseCommand(command) {
 		results.push(thisRoll);
 	}
 
-	total += rollObj.positive?rollObj.modifier:-1*rollObj.modifier;
+	total += rollObj.positive ? rollObj.modifier : -1*rollObj.modifier;
 
 	return {'total':total, 'results':results};
 
@@ -104,8 +102,7 @@ client.on('messageCreate', message => {
 		const pongEmbed = new MessageEmbed()
 			.setColor('#0099ff')
 			.setTitle('Pong!')
-			//.addField('Try 🅰️ when you have advantage! \nTry 🇩 when you have disdvantage! \nTry ☄️ when you have guidance!', 'Now with less bugs! 🪲')
-			.addField('Unhappy with your dice result?', 'Try the command "#bullshit"!')
+			.addFields({name: 'Unhappy with your dice result?', value: 'Try the command "#bullshit"!'})
 			.setTimestamp()
 			.setFooter({ text: 'ping pong @'+author });
 
@@ -151,11 +148,10 @@ client.on('messageCreate', message => {
   			color: '#0099ff'
 		};
 		console.log(chartEmbed);
-		//message.channel.send('Here\'s the chart you requested:'+chart.getUrl());
 		message.channel.send({ embeds: [chartEmbed] });
 
 	}
-	else if(!message.author.bot && message.channel.name == 'dice-rolls' && cmdRe.test(message.content)) {
+	else if(!message.author.bot && message.channel.name == 'dice-rolls' && cmdRegEx.test(message.content)) {
 
 		let command = message.content.split(cmdRe)[1];
 		let rollObj = parseCommand(command);
@@ -164,8 +160,11 @@ client.on('messageCreate', message => {
 		const basicEmbed = new MessageEmbed()
 				.setColor('#0099ff')
 				.setTitle('Result: '+resultsObj.total)
-				//.addField(results.toString(),'\u200b')
-				.addField(name='['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), value=rollObj.command, inline=true)
+				.addFields({
+					name: '['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""),
+					value: rollObj.command,
+					inline: true
+				})
 				.setTimestamp()
 				.setFooter({ text: 'Rolled by @'+message.author.username });
 
@@ -185,8 +184,6 @@ client.on('messageReactionAdd', (reaction, user) => {
 	//console.log(user);
 
 	if(!user.bot && reaction.message.author.bot) {
-		// figure out which emoji
-
 		//console.log(reaction);
 
 		if(reaction._emoji.name==='🅰️'&&reaction.count===2) {
@@ -218,14 +215,18 @@ client.on('messageReactionAdd', (reaction, user) => {
 					theEmbed.setTitle('Result: '+Math.max(resultsObj.total,firstTotal));
 				}
 
-				//theEmbed.fields[0].inline=true;
-				theEmbed.addField(name='['+resultsObj.results.toString()+'] '+
-					(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
-					value='Advantage!',
-					inline=true);
+				theEmbed.addFields({
+					name: '['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
+					value: 'Advantage!',
+					inline: true
+				});
 
 				if(guidance>0) {
-					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+					theEmbed.addFields({
+						name: '['+guidance+']', 
+						value: 'Guidance!', 
+						inline: true
+					});
 				}
 
 				reaction.message.edit({embeds : [theEmbed]});
@@ -261,14 +262,18 @@ client.on('messageReactionAdd', (reaction, user) => {
 					theEmbed.setTitle('Result: '+Math.min(resultsObj.total,firstTotal));
 				}
 
-				//theEmbed.fields[0].inline=true;
-				theEmbed.addField(name='['+resultsObj.results.toString()+'] '+
-					(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
-					value='Disadvantage!',
-					inline=true);
+				theEmbed.addFields({
+					name: '['+resultsObj.results.toString()+'] '+(rollObj.modifier!=0?(rollObj.positive?'+ ':'- ')+rollObj.modifier:""), 
+					value: 'Disadvantage!',
+					inline: true
+				});
 
 				if(guidance>0) {
-					theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+					theEmbed.addFields({
+						name: '['+guidance+']', 
+						value: 'Guidance!', 
+						inline: true
+					});
 				}
 
 				reaction.message.edit({embeds : [theEmbed]});
@@ -287,7 +292,11 @@ client.on('messageReactionAdd', (reaction, user) => {
 
 				theEmbed.setTitle('Result: '+(firstTotal+guidance));
 
-				theEmbed.addField(name='['+guidance+']', value='Guidance!', inline=true);
+				theEmbed.addFields({
+					name: '['+guidance+']',
+					 value: 'Guidance!',
+					 inline: true
+				});
 
 				reaction.message.edit({embeds : [theEmbed]});
 			}
